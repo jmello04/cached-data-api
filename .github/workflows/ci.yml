@@ -12,8 +12,9 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - name: Checkout do repositório
@@ -33,8 +34,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Verificar importações e estrutura
+        run: python -c "from app.main import app; print('Importação da aplicação: OK')"
+
       - name: Executar suíte de testes
         run: pytest -v --tb=short
 
-      - name: Verificar importações e estrutura
-        run: python -c "from app.main import app; print('Importação da aplicação: OK')"
+      - name: Verificar sintaxe de todos os módulos
+        run: python -m py_compile $(find app scripts tests -name "*.py" | tr '\n' ' ')
