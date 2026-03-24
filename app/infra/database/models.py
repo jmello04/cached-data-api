@@ -1,11 +1,14 @@
 import uuid
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Numeric, DateTime, Index, text
+from sqlalchemy import Column, DateTime, Index, Numeric, String, text
 from sqlalchemy.dialects.postgresql import UUID
 
-from app.infra.database.session import Base
+from app.infra.database.base import Base
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class Transaction(Base):
@@ -17,9 +20,12 @@ class Transaction(Base):
     category = Column(String(100), nullable=False)
     merchant = Column(String(150), nullable=False)
     status = Column(String(50), nullable=False, default="completed")
-    transaction_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    transaction_date = Column(DateTime(timezone=True), nullable=False, default=_now_utc)
     created_at = Column(
-        DateTime, nullable=False, server_default=text("NOW()"), default=datetime.utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+        default=_now_utc,
     )
 
     __table_args__ = (

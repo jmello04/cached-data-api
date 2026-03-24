@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import text
@@ -29,14 +29,14 @@ class ReportService:
         rows = result.fetchall()
         if not rows:
             return pd.DataFrame()
-        return pd.DataFrame(rows, columns=result.keys())
+        return pd.DataFrame(rows, columns=list(result.keys()))
 
     async def get_summary_report(self) -> dict[str, Any]:
         df = await self._fetch_all_transactions()
         if df.empty:
             return {"message": "Sem dados disponíveis", "total_records": 0}
 
-        summary = {
+        return {
             "total_records": int(len(df)),
             "total_amount": round(float(df["amount"].sum()), 2),
             "average_amount": round(float(df["amount"].mean()), 2),
@@ -45,17 +45,14 @@ class ReportService:
             "std_deviation": round(float(df["amount"].std()), 2),
             "total_categories": int(df["category"].nunique()),
             "total_merchants": int(df["merchant"].nunique()),
-            "status_distribution": df["status"]
-            .value_counts()
-            .to_dict(),
+            "status_distribution": df["status"].value_counts().to_dict(),
             "monthly_totals": self._compute_monthly_totals(df),
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         }
-        return summary
 
     def _compute_monthly_totals(self, df: pd.DataFrame) -> list[dict]:
         df = df.copy()
-        df["transaction_date"] = pd.to_datetime(df["transaction_date"])
+        df["transaction_date"] = pd.to_datetime(df["transaction_date"], utc=True)
         df["month"] = df["transaction_date"].dt.to_period("M").astype(str)
         monthly = (
             df.groupby("month")
@@ -75,6 +72,8 @@ class ReportService:
         if df.empty:
             return {"message": "Sem dados disponíveis", "categories": []}
 
+        total_global = df["amount"].sum()
+
         category_stats = (
             df.groupby("category")
             .agg(
@@ -83,12 +82,12 @@ class ReportService:
                 average_amount=("amount", "mean"),
                 max_amount=("amount", "max"),
                 min_amount=("amount", "min"),
-                percentage_of_total=(
-                    "amount",
-                    lambda x: round(x.sum() / df["amount"].sum() * 100, 2),
-                ),
             )
             .reset_index()
+        )
+
+        category_stats["percentage_of_total"] = (
+            (category_stats["total_amount"] / total_global * 100).round(2)
         )
 
         for col in ["total_amount", "average_amount", "max_amount", "min_amount"]:
@@ -112,7 +111,7 @@ class ReportService:
         return {
             "total_categories": int(len(merged)),
             "categories": merged.to_dict(orient="records"),
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
     async def get_top_transactions(
@@ -125,8 +124,7 @@ class ReportService:
         valid_columns = {"amount", "transaction_date"}
         sort_col = order_by if order_by in valid_columns else "amount"
 
-        top = df.nlargest(limit, sort_col)
-        top = top.copy()
+        top = df.nlargest(limit, sort_col).copy()
         top["transaction_date"] = top["transaction_date"].astype(str)
         top["id"] = top["id"].astype(str)
         top["amount"] = top["amount"].round(2)
@@ -135,5 +133,5 @@ class ReportService:
             "limit": limit,
             "order_by": sort_col,
             "transactions": top.to_dict(orient="records"),
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         }

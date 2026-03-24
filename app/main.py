@@ -9,6 +9,7 @@ from app.api.routes import cache as cache_routes
 from app.api.routes import reports as reports_routes
 from app.cache.client import close_redis, get_redis
 from app.core.config import settings
+from app.infra.database import models  # noqa: F401 — registra os modelos no Base.metadata
 from app.infra.database.session import create_tables
 
 

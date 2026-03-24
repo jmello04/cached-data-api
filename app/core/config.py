@@ -1,8 +1,15 @@
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
     APP_NAME: str = "Cached Data API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
@@ -17,10 +24,6 @@ class Settings(BaseSettings):
     REDIS_TTL_DEFAULT: int = 300
 
     CACHE_KEY_PREFIX: str = "cached_data_api"
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 @lru_cache()

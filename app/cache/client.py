@@ -1,5 +1,4 @@
 import json
-import time
 from typing import Any, Optional
 
 import redis.asyncio as aioredis
@@ -8,7 +7,7 @@ from app.core.config import settings
 
 _redis_client: Optional[aioredis.Redis] = None
 
-_stats = {
+_stats: dict[str, int] = {
     "hits": 0,
     "misses": 0,
 }
@@ -68,15 +67,18 @@ async def cache_delete_pattern(pattern: str) -> int:
 
 
 async def get_cache_stats() -> dict:
-    client = await get_redis()
     total = _stats["hits"] + _stats["misses"]
     hit_rate = round(_stats["hits"] / total * 100, 2) if total > 0 else 0.0
 
-    prefix_pattern = f"{settings.CACHE_KEY_PREFIX}:*"
-    active_keys = len(await client.keys(prefix_pattern))
-
-    info = await client.info("memory")
-    memory_used = info.get("used_memory_human", "N/A")
+    try:
+        client = await get_redis()
+        prefix_pattern = f"{settings.CACHE_KEY_PREFIX}:*"
+        active_keys = len(await client.keys(prefix_pattern))
+        info = await client.info("memory")
+        memory_used = info.get("used_memory_human", "N/A")
+    except Exception:
+        active_keys = -1
+        memory_used = "indisponível"
 
     return {
         "hits": _stats["hits"],

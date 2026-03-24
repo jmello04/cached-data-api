@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -9,14 +11,15 @@ router = APIRouter(prefix="/cache", tags=["Gerenciamento de Cache"])
 
 @router.post(
     "/invalidate",
-    summary="Invalida todo o cache manualmente",
-    response_description="Confirmação da invalidação com total de chaves removidas",
+    summary="Invalida o cache manualmente",
+    response_description="Confirmação com total de chaves removidas",
 )
-async def invalidate_cache(pattern: str = None) -> JSONResponse:
-    if pattern:
-        target = f"{settings.CACHE_KEY_PREFIX}:{pattern}:*"
-    else:
-        target = f"{settings.CACHE_KEY_PREFIX}:*"
+async def invalidate_cache(pattern: Optional[str] = None) -> JSONResponse:
+    target = (
+        f"{settings.CACHE_KEY_PREFIX}:{pattern}:*"
+        if pattern
+        else f"{settings.CACHE_KEY_PREFIX}:*"
+    )
 
     deleted_count = await cache_delete_pattern(target)
     reset_stats()
