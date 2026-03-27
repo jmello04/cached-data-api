@@ -1,3 +1,5 @@
+"""Async Redis client with in-process hit/miss statistics tracking."""
+
 import json
 from typing import Any, Optional
 
@@ -14,6 +16,11 @@ _stats: dict[str, int] = {
 
 
 def _build_redis_url() -> str:
+    """Construct the Redis connection URL from application settings.
+
+    Returns:
+        A fully qualified Redis URL including optional password authentication.
+    """
     if settings.REDIS_PASSWORD:
         return (
             f"redis://:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}"
@@ -23,6 +30,14 @@ def _build_redis_url() -> str:
 
 
 async def get_redis() -> aioredis.Redis:
+    """Return the shared Redis client, creating it on first call.
+
+    Uses a module-level singleton so the connection pool is reused across
+    requests within the same process lifetime.
+
+    Returns:
+        Configured async Redis client instance.
+    """
     global _redis_client
     if _redis_client is None:
         _redis_client = aioredis.from_url(
@@ -36,6 +51,11 @@ async def get_redis() -> aioredis.Redis:
 
 
 async def close_redis() -> None:
+    """Close the shared Redis connection and reset the singleton.
+
+    Called during application shutdown to release the connection pool
+    gracefully before the process exits.
+    """
     global _redis_client
     if _redis_client is not None:
         await _redis_client.aclose()
@@ -43,6 +63,14 @@ async def close_redis() -> None:
 
 
 async def cache_get(key: str) -> Optional[Any]:
+    """Retrieve a cached value by key and update hit/miss counters.
+
+    Args:
+        key: Redis key to look up.
+
+    Returns:
+        Deserialised Python object if the key exists, otherwise None.
+    """
     client = await get_redis()
     raw = await client.get(key)
     if raw is None:
@@ -53,12 +81,27 @@ async def cache_get(key: str) -> Optional[Any]:
 
 
 async def cache_set(key: str, value: Any, ttl: int) -> None:
+    """Serialise and store a value in Redis with an expiration.
+
+    Args:
+        key: Redis key under which the value will be stored.
+        value: Python object to serialise as JSON.
+        ttl: Time-to-live in seconds before the key expires.
+    """
     client = await get_redis()
     serialized = json.dumps(value, default=str)
     await client.setex(key, ttl, serialized)
 
 
 async def cache_delete_pattern(pattern: str) -> int:
+    """Delete all Redis keys matching a glob pattern.
+
+    Args:
+        pattern: Redis key pattern (e.g. ``"cached_data_api:reports:*"``).
+
+    Returns:
+        Number of keys removed. Returns 0 if no keys matched.
+    """
     client = await get_redis()
     keys = await client.keys(pattern)
     if not keys:
@@ -66,7 +109,16 @@ async def cache_delete_pattern(pattern: str) -> int:
     return await client.delete(*keys)
 
 
-async def get_cache_stats() -> dict:
+async def get_cache_stats() -> dict[str, Any]:
+    """Return current cache performance metrics.
+
+    Combines the in-process hit/miss counters with live Redis server data
+    (active key count and memory usage). If Redis is unreachable, those
+    fields are set to sentinel values rather than raising an exception.
+
+    Returns:
+        Dictionary with keys: hits, misses, hit_rate, active_keys, memory_used.
+    """
     total = _stats["hits"] + _stats["misses"]
     hit_rate = round(_stats["hits"] / total * 100, 2) if total > 0 else 0.0
 
@@ -90,5 +142,9 @@ async def get_cache_stats() -> dict:
 
 
 def reset_stats() -> None:
+    """Reset in-process hit and miss counters to zero.
+
+    Used in tests to ensure a clean statistics baseline before each test case.
+    """
     _stats["hits"] = 0
     _stats["misses"] = 0

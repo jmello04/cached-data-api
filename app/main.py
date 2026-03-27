@@ -1,5 +1,6 @@
 import time
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +15,16 @@ from app.infra.database.session import create_tables
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # type: ignore[type-arg]
+    """Manage application startup and shutdown lifecycle.
+
+    On startup: initialise database tables and establish the Redis connection
+    pool so both are ready before the first request is processed.
+    On shutdown: close the Redis connection pool gracefully.
+
+    Args:
+        app: The FastAPI application instance (required by the protocol).
+    """
     await create_tables()
     await get_redis()
     yield
@@ -43,7 +53,20 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def add_response_time_header(request: Request, call_next):
+async def add_response_time_header(request: Request, call_next: Any) -> Response:
+    """Middleware that appends wall-clock response time to every HTTP response.
+
+    Only sets ``X-Response-Time`` when the decorated endpoint has not already
+    set it (e.g. endpoints wrapped with ``@cache_response`` report their own
+    more granular measurement).
+
+    Args:
+        request: Incoming HTTP request.
+        call_next: ASGI callable that processes the request and returns a response.
+
+    Returns:
+        The response with the ``X-Response-Time`` header attached.
+    """
     start = time.perf_counter()
     response: Response = await call_next(request)
     elapsed_ms = round((time.perf_counter() - start) * 1000, 3)
